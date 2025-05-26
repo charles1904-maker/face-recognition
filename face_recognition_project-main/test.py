@@ -51,7 +51,20 @@ if imgBackground is None:
 video = cv2.VideoCapture(0)
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-COL_NAMES = ['NAME', 'TIME']
+COL_NAMES = ['NAME', 'TIME', 'DATE', 'STATUS']
+
+def check_clock_status(name, date):
+    """Check if person has already clocked in/out today"""
+    try:
+        with open(f"Attendance/Attendance_{date}.csv", 'r') as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)  # Skip header
+            for row in csvreader:
+                if row[0] == name:
+                    return row[3]  # Return last status
+    except:
+        return None
+    return None
 
 while True:
     ret, frame = video.read()
@@ -61,6 +74,7 @@ while True:
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    
     for (x, y, w, h) in faces:
         crop_img = frame[y:y+h, x:x+w, :]
         resized_img = cv2.resize(crop_img, (50, 50)).flatten().reshape(1, -1)
@@ -68,29 +82,40 @@ while True:
         ts = time.time()
         date = datetime.fromtimestamp(ts).strftime("%d-%m-%Y")
         timestamp = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-        attendance_file_path = os.path.join(attendance_dir, f"Attendance_{date}.csv")
-        exist=os.path.isfile("Attendance/Attendance_" + date + ".csv")
+        
+        # Check current status
+        current_status = check_clock_status(str(output[0]), date)
+        
+        # Determine next status
+        next_status = "CLOCK IN" if current_status is None or current_status == "CLOCK OUT" else "CLOCK OUT"
+        
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 1)
         cv2.rectangle(frame, (x, y), (x+w, y+h), (50, 50, 255), 2)
         cv2.rectangle(frame, (x, y-40), (x+w, y), (50, 50, 255), -1)
-        cv2.putText(frame, str(output[0]), (x, y-15), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
+        cv2.putText(frame, f"{str(output[0])} - {next_status}", (x, y-15), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255, 255, 255), 1)
         cv2.rectangle(frame, (x, y), (x+w, y+h), (50, 50, 255), 1)
-        attendance = [str(output[0]), str(timestamp)]
+        
+        attendance = [str(output[0]), str(timestamp), str(date), next_status]
+    
     imgBackground[162:162 + 480, 55:55 + 640] = frame
     cv2.imshow("Frame", imgBackground)
     k = cv2.waitKey(1)
+    
     if k == ord('o'):
-        speak("Attendance Taken..")
-        time.sleep(5)
+        speak(f"Attendance Taken.. {next_status}")
+        time.sleep(2)
+        exist = os.path.isfile(f"Attendance/Attendance_{date}.csv")
+        
         if exist:
-            with open("Attendance/Attendance_" + date + ".csv", "+a") as csvfile:
+            with open(f"Attendance/Attendance_{date}.csv", "+a", newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(attendance)
         else:
-            with open("Attendance/Attendance_" + date + ".csv", "+a") as csvfile:
+            with open(f"Attendance/Attendance_{date}.csv", "+a", newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(COL_NAMES)
                 writer.writerow(attendance)
+    
     if k == ord('q'):
         break
 
